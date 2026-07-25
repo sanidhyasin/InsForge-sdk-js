@@ -236,6 +236,23 @@ describe('Realtime', () => {
     expect(realtime.getSubscribedChannels()).toEqual(['room']);
   });
 
+  it('resolves a subscription with empty presence when the acknowledgement omits the snapshot', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+    const subscription = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+
+    latestSubscribeAck()({ ok: true, channel: 'room' } as SubscribeResponse);
+
+    await expect(subscription).resolves.toEqual({
+      ok: true,
+      channel: 'room',
+      presence: { members: [] },
+    });
+    expect(realtime.getSubscribedChannels()).toEqual(['room']);
+    expect(realtime.getPresenceState('room')).toEqual([]);
+  });
+
   it('pauses a server-rejected subscription until the caller explicitly retries it', async () => {
     const realtime = new Realtime('http://example.test', new TokenManager());
     await connect(realtime);

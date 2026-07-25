@@ -310,6 +310,9 @@ export class Realtime {
         }
         if (response.ok) {
           subscription.status = 'subscribed';
+          // Older self-hosted backends may omit the presence snapshot from the
+          // acknowledgement; normalize it so the returned promise always settles.
+          response.presence ??= { members: [] };
           subscription.members = new Map(
             response.presence.members.map((member) => [member.presenceId, member])
           );
