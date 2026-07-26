@@ -281,7 +281,11 @@ export class StorageBucket {
    *   so `const { data } = getPublicUrl(path)` then `data.publicUrl`.
    */
   getPublicUrl(path: string): StorageResponse<{ publicUrl: string }> {
-    const publicUrl = `${this.http.baseUrl}/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`;
+    // Encode per path segment so `/` separators in nested keys stay literal —
+    // the storage route serves `a/b/c.png` but not the whole-key-encoded
+    // `a%2Fb%2Fc.png` form.
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const publicUrl = `${this.http.baseUrl}/api/storage/buckets/${this.bucketName}/objects/${encodedPath}`;
     return { data: { publicUrl }, error: null };
   }
 

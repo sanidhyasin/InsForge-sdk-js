@@ -47,20 +47,30 @@ describe('StorageBucket.getPublicUrl', () => {
 
     expect(result).toEqual({
       data: {
-        publicUrl: 'http://localhost:7130/api/storage/buckets/docs/objects/images%2Flogo.png',
+        publicUrl: 'http://localhost:7130/api/storage/buckets/docs/objects/images/logo.png',
       },
       error: null,
     });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('encodes special characters and nested paths', () => {
+  it('encodes special characters per segment, keeping `/` separators literal', () => {
     const bucket = new StorageBucket('docs', makeHttp(vi.fn()));
 
     const { data } = bucket.getPublicUrl('files/my doc (1).pdf');
 
     expect(data?.publicUrl).toContain('docs');
-    expect(data?.publicUrl).toContain('files%2Fmy%20doc%20(1).pdf');
+    expect(data?.publicUrl).toContain('files/my%20doc%20(1).pdf');
+  });
+
+  it('keeps nested content-addressed keys directly fetchable', () => {
+    const bucket = new StorageBucket('audio', makeHttp(vi.fn()));
+
+    const { data } = bucket.getPublicUrl('c7/01/c701abc.mp3');
+
+    expect(data?.publicUrl).toBe(
+      'http://localhost:7130/api/storage/buckets/audio/objects/c7/01/c701abc.mp3'
+    );
   });
 });
 
