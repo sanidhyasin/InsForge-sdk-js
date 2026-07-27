@@ -49,6 +49,8 @@ export interface AuthActions {
   signInWithIdToken: SafeAuthAction<InsForgeClient['auth']['signInWithIdToken']>;
   exchangeOAuthCode: SafeAuthAction<InsForgeClient['auth']['exchangeOAuthCode']>;
   verifyEmail: SafeAuthAction<InsForgeClient['auth']['verifyEmail']>;
+  signInWithOtp: InsForgeClient['auth']['signInWithOtp'];
+  verifyOtp: SafeAuthAction<InsForgeClient['auth']['verifyOtp']>;
   signOut: InsForgeClient['auth']['signOut'];
 }
 
@@ -158,6 +160,16 @@ export function createAuthActions(options: CreateAuthActionsOptions = {}): AuthA
       const result = await createClient().auth.verifyEmail(request);
       persistSessionCookies(writeCookies, result.data, cookieSettings);
       return toSafeAuthResult<InsForgeClient['auth']['verifyEmail']>(result);
+    },
+
+    signInWithOtp: async (request) => {
+      return createClient().auth.signInWithOtp(request);
+    },
+
+    verifyOtp: async (request) => {
+      const result = await createClient().auth.verifyOtp(request);
+      persistSessionCookies(writeCookies, result.data, cookieSettings);
+      return toSafeAuthResult<InsForgeClient['auth']['verifyOtp']>(result);
     },
 
     signOut: async () => {
