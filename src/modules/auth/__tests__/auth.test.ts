@@ -311,6 +311,8 @@ describe('Auth', () => {
         { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
         new TokenManager()
       );
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const setRefreshTokenSpy = vi.spyOn(http, 'setRefreshToken');
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
       const { data, error } = await auth.verifyOtp({
@@ -321,6 +323,9 @@ describe('Auth', () => {
 
       expect(error).toBeNull();
       expect(data?.accessToken).toBe('access-token');
+      // The session must be persisted — this is what distinguishes verifyOtp from signInWithOtp.
+      expect(setAuthTokenSpy).toHaveBeenCalledWith('access-token');
+      expect(setRefreshTokenSpy).toHaveBeenCalledWith('refresh-token');
 
       const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
       const url = new URL(requestUrl);
@@ -332,6 +337,32 @@ describe('Auth', () => {
         otp: '123456',
         name: 'Ada Lovelace',
       });
+    });
+
+    it('signs in through the browser sessions endpoint (no client_type) and stores the session', async () => {
+      const session = {
+        user: { id: 'u1', email: 'user@example.com', emailVerified: true },
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      };
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, session));
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+
+      const { data, error } = await auth.verifyOtp({ email: 'user@example.com', otp: '123456' });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('access-token');
+      // Browser mode persists the session to the token manager.
+      expect(tokenManager.getAccessToken()).toBe('access-token');
+
+      const url = new URL(fetchMock.mock.calls[0][0] as string);
+      expect(url.pathname).toBe('/api/auth/sessions');
+      expect(url.searchParams.get('client_type')).toBeNull();
     });
   });
 });

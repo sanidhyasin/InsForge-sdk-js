@@ -244,7 +244,8 @@ export class Auth {
     try {
       const response = await this.http.post<CreateSessionResponse>(
         this.isServerMode() ? '/api/auth/sessions?client_type=mobile' : '/api/auth/sessions',
-        { method: 'otp', ...request },
+        // method is set last so it can never be clobbered by an untyped caller's payload.
+        { ...request, method: 'otp' },
         { credentials: 'include', skipAuthRefresh: true }
       );
 
