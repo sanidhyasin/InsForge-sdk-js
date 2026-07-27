@@ -82,6 +82,22 @@ describe('Functions.invoke', () => {
       expect(fetchFn).toHaveBeenCalledTimes(2);
       expect(String(fetchFn.mock.calls[1][0])).toContain('/functions/hello');
     });
+
+    it('falls back to proxy when the derived subhosting host fails at the network layer', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(jsonRes(200, { proxied: true }));
+      const http = makeInsforgeHttp(fetchFn);
+      const fns = new Functions(http); // functionsUrl derived from baseUrl
+
+      const result = await fns.invoke('hello');
+
+      expect(result).toEqual({ data: { proxied: true }, error: null });
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(String(fetchFn.mock.calls[0][0])).toBe('https://app.functions.insforge.app/hello');
+      expect(String(fetchFn.mock.calls[1][0])).toContain('/functions/hello');
+    });
   });
 
   describe('in-process path (global present)', () => {

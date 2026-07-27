@@ -87,7 +87,8 @@ export class Functions {
    *    This avoids Deno Subhosting's 508 Loop Detected when one bundled
    *    function invokes another inside the same deployment.
    * 2. Otherwise, try the configured subhosting URL.
-   * 3. On 404 from subhosting, fall back to the proxy path.
+   * 3. On 404 or a network-layer failure from subhosting (e.g. the derived
+   *    host does not resolve for this project), fall back to the proxy path.
    *
    * @param slug The function slug to invoke
    * @param options Request options
@@ -143,8 +144,14 @@ export class Functions {
         if (error instanceof Error && error.name === 'AbortError') {
           throw error;
         }
-        if (error instanceof InsForgeError && error.statusCode === 404) {
-          // fall through to proxy
+        if (
+          error instanceof InsForgeError &&
+          (error.statusCode === 404 || error.statusCode === 0)
+        ) {
+          // 404: function not found on subhosting.
+          // 0 (NETWORK_ERROR): subhosting host unreachable (e.g. the derived
+          // hostname does not match this project's routing).
+          // Either way, fall through to proxy.
         } else {
           return {
             data: null,
