@@ -29,6 +29,7 @@ import {
   type CreateUserResponse,
   type CreateSessionRequest,
   type CreateSessionResponse,
+  type SendOTPRequest,
   type GetOauthUrlResponse,
   type GetPublicAuthConfigResponse,
   type OAuthInitRequest,
@@ -60,6 +61,12 @@ type OAuthSignInOptions = {
 type OAuthSignInLegacyOptions = OAuthSignInOptions & {
   provider: OAuthProvidersSchema | string;
 };
+
+/** Credentials for the password sign-in flow (excludes the OTP session variant). */
+export type PasswordSessionRequest = Exclude<CreateSessionRequest, { method: 'otp' }>;
+
+/** Payload for {@link Auth.verifyOtp}: the email OTP session variant without the discriminator. */
+export type VerifyOtpRequest = Omit<Extract<CreateSessionRequest, { method: 'otp' }>, 'method'>;
 
 export class Auth {
   private authCallbackHandled: Promise<void>;
@@ -180,7 +187,7 @@ export class Auth {
     }
   }
 
-  async signInWithPassword(request: CreateSessionRequest): Promise<{
+  async signInWithPassword(request: PasswordSessionRequest): Promise<{
     data: CreateSessionResponse | null;
     error: InsForgeError | null;
   }> {
@@ -188,6 +195,56 @@ export class Auth {
       const response = await this.http.post<CreateSessionResponse>(
         this.isServerMode() ? '/api/auth/sessions?client_type=mobile' : '/api/auth/sessions',
         request,
+        { credentials: 'include', skipAuthRefresh: true }
+      );
+
+      this.saveSessionFromResponse(response);
+      if (response.refreshToken) {
+        this.http.setRefreshToken(response.refreshToken);
+      }
+
+      return { data: response, error: null };
+    } catch (error) {
+      return wrapError(error, 'An unexpected error occurred during sign in');
+    }
+  }
+
+  /**
+   * Send a one-time sign-in code to an email address.
+   *
+   * The response is intentionally generic whether or not an account exists, to
+   * avoid account enumeration. Complete the flow with {@link Auth.verifyOtp}.
+   */
+  async signInWithOtp(request: SendOTPRequest): Promise<{
+    data: { success: boolean; message: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ success: boolean; message: string }>(
+        '/api/auth/email/send-otp',
+        request,
+        { skipAuthRefresh: true }
+      );
+      return { data: response, error: null };
+    } catch (error) {
+      return wrapError(error, 'An unexpected error occurred while sending the sign-in code');
+    }
+  }
+
+  /**
+   * Verify an email sign-in code and create a session.
+   *
+   * If the email is new, a verified passwordless user is created; `name` sets
+   * the display name only on that first-time creation.
+   */
+  async verifyOtp(request: VerifyOtpRequest): Promise<{
+    data: CreateSessionResponse | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<CreateSessionResponse>(
+        this.isServerMode() ? '/api/auth/sessions?client_type=mobile' : '/api/auth/sessions',
+        { method: 'otp', ...request },
         { credentials: 'include', skipAuthRefresh: true }
       );
 

@@ -273,4 +273,65 @@ describe('Auth', () => {
       expect(headers.has('X-CSRF-Token')).toBe(false);
     });
   });
+
+  describe('signInWithOtp()', () => {
+    it('posts the email to the send-otp endpoint and returns the generic success payload', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        createJsonResponse(202, {
+          success: true,
+          message: 'If sign-in is available for this email, we have sent a verification code.',
+        })
+      );
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        new TokenManager()
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: true });
+
+      const { data, error } = await auth.signInWithOtp({ email: 'user@example.com' });
+
+      expect(error).toBeNull();
+      expect(data?.success).toBe(true);
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(new URL(requestUrl).pathname).toBe('/api/auth/email/send-otp');
+      expect(JSON.parse(requestInit.body as string)).toEqual({ email: 'user@example.com' });
+    });
+  });
+
+  describe('verifyOtp()', () => {
+    it('verifies the code via the sessions endpoint with method "otp" and returns a session', async () => {
+      const session = {
+        user: { id: 'u1', email: 'user@example.com', emailVerified: true },
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      };
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, session));
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        new TokenManager()
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: true });
+
+      const { data, error } = await auth.verifyOtp({
+        email: 'user@example.com',
+        otp: '123456',
+        name: 'Ada Lovelace',
+      });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('access-token');
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const url = new URL(requestUrl);
+      expect(url.pathname).toBe('/api/auth/sessions');
+      expect(url.searchParams.get('client_type')).toBe('mobile');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        method: 'otp',
+        email: 'user@example.com',
+        otp: '123456',
+        name: 'Ada Lovelace',
+      });
+    });
+  });
 });

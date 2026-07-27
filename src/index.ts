@@ -25,6 +25,7 @@ export type {
   UserSchema,
   CreateUserRequest,
   CreateSessionRequest,
+  SendOTPRequest,
   AuthErrorResponse,
   DeleteObjectResult,
   DeleteObjectsResponse,
@@ -32,6 +33,7 @@ export type {
 
 // Re-export auth module for advanced usage
 export { Auth } from './modules/auth/auth';
+export type { PasswordSessionRequest, VerifyOtpRequest } from './modules/auth/auth';
 
 // Re-export database module (using postgrest-js)
 export { Database } from './modules/database-postgrest';
