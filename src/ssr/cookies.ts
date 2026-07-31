@@ -30,10 +30,12 @@ export interface CookieReader {
 }
 
 export interface CookieWriter {
-  set?(name: string, value: string, options?: CookieOptions): unknown;
-  set?(options: { name: string; value: string } & CookieOptions): unknown;
+  set?(
+    ...args:
+      | [name: string, value: string, options?: CookieOptions]
+      | [options: { name: string; value: string } & CookieOptions]
+  ): unknown;
   delete?(name: string): unknown;
-  delete?(options: { name: string } & CookieOptions): unknown;
 }
 
 export interface CookieStore extends CookieReader, CookieWriter {}
