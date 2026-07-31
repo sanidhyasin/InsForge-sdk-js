@@ -58,14 +58,14 @@ describe('Functions.invoke', () => {
     it('uses subhosting URL when functionsUrl is configured', async () => {
       const fetchFn = vi.fn().mockResolvedValue(jsonRes(200, { ok: true }));
       const http = makeHttp(fetchFn);
-      const fns = new Functions(http, 'https://app.functions.insforge.app');
+      const fns = new Functions(http, 'https://app.function2.insforge.app');
 
       const result = await fns.invoke('hello', { body: { x: 1 } });
 
       expect(result).toEqual({ data: { ok: true }, error: null });
       expect(fetchFn).toHaveBeenCalledOnce();
       const calledUrl = fetchFn.mock.calls[0][0];
-      expect(String(calledUrl)).toBe('https://app.functions.insforge.app/hello');
+      expect(String(calledUrl)).toBe('https://app.function2.insforge.app/hello');
     });
 
     it('falls back to proxy when subhosting returns 404', async () => {
@@ -74,7 +74,7 @@ describe('Functions.invoke', () => {
         .mockResolvedValueOnce(jsonRes(404, { error: 'NOT_FOUND', message: 'no' }, 'Not Found'))
         .mockResolvedValueOnce(jsonRes(200, { proxied: true }));
       const http = makeHttp(fetchFn);
-      const fns = new Functions(http, 'https://app.functions.insforge.app');
+      const fns = new Functions(http, 'https://app.function2.insforge.app');
 
       const result = await fns.invoke('hello');
 
@@ -96,7 +96,7 @@ describe('Functions.invoke', () => {
         },
         makeTokenManager()
       );
-      const fns = new Functions(http, 'https://app.functions.insforge.app');
+      const fns = new Functions(http, 'https://app.function2.insforge.app');
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, { ok: 1 }));
       (globalThis as any).__insforge_dispatch__ = dispatch;
 
@@ -216,7 +216,7 @@ describe('Functions.invoke', () => {
         },
         makeTokenManager()
       );
-      const fns = new Functions(http, 'https://app-b.functions.insforge.app');
+      const fns = new Functions(http, 'https://app-b.function2.insforge.app');
       const dispatch = vi.fn();
       (globalThis as any).__insforge_dispatch__ = dispatch;
 
@@ -225,7 +225,7 @@ describe('Functions.invoke', () => {
       expect(result).toEqual({ data: { remote: true }, error: null });
       expect(dispatch).not.toHaveBeenCalled();
       expect(fetchFn).toHaveBeenCalledOnce();
-      expect(String(fetchFn.mock.calls[0][0])).toBe('https://app-b.functions.insforge.app/hello');
+      expect(String(fetchFn.mock.calls[0][0])).toBe('https://app-b.function2.insforge.app/hello');
     });
   });
 });

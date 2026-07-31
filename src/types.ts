@@ -39,7 +39,7 @@ export interface InsForgeConfig {
    * Direct URL to Deno Subhosting functions (optional)
    * When provided, SDK will try this URL first for function invocations.
    * Falls back to proxy URL if subhosting returns 404.
-   * @example "https://{appKey}.functions.insforge.app"
+   * @example "https://{appKey}.function2.insforge.app"
    */
   functionsUrl?: string;
 

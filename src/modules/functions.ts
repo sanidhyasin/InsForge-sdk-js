@@ -40,7 +40,7 @@ export class Functions {
   /**
    * Derive the subhosting URL from the base URL.
    * Base URL pattern: https://{appKey}.{region}.insforge.app
-   * Functions URL:    https://{appKey}.functions.insforge.app
+   * Functions URL:    https://{appKey}.function2.insforge.app
    * Only applies to .insforge.app domains.
    */
   private static deriveSubhostingUrl(baseUrl: string): string | undefined {
@@ -50,7 +50,7 @@ export class Functions {
         return undefined;
       }
       const appKey = hostname.split('.')[0];
-      return `https://${appKey}.functions.insforge.app`;
+      return `https://${appKey}.function2.insforge.app`;
     } catch {
       return undefined;
     }
