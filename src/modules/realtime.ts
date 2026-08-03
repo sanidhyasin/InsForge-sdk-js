@@ -308,16 +308,40 @@ export class Realtime {
         if (this.subscriptions.get(channel) !== subscription || subscription.epoch !== epoch) {
           return;
         }
-        if (response.ok) {
-          subscription.status = 'subscribed';
-          subscription.members = new Map(
-            response.presence.members.map((member) => [member.presenceId, member])
-          );
-        } else {
+        try {
+          if (response.ok) {
+            // Backends predating the presence snapshot ack with `{ ok: true, channel }`.
+            // A missing snapshot or member list normalizes to empty; anything else
+            // present but unusable is a broken ack, not an older backend.
+            const members = response.presence?.members ?? [];
+            if (!Array.isArray(members)) {
+              throw new Error('Presence snapshot members is not an array');
+            }
+            response.presence = { members };
+            subscription.members = new Map(members.map((member) => [member.presenceId, member]));
+            // Set only after the snapshot is read, so an unreadable ack cannot leave
+            // the subscription reporting itself as subscribed.
+            subscription.status = 'subscribed';
+          } else {
+            subscription.status = 'rejected';
+            subscription.members.clear();
+          }
+          this.settleSubscription(subscription, response, false);
+        } catch (error) {
+          // An unreadable ack must still settle the caller's promise; otherwise it
+          // waits out SUBSCRIBE_TIMEOUT and reports a timeout that never happened.
+          // The epoch bump matches the timeout and disconnect paths rather than the
+          // plain-reject one: a duplicate ack for an attempt we failed to read
+          // should not be able to settle this subscription a second time.
           subscription.status = 'rejected';
           subscription.members.clear();
+          const message = error instanceof Error ? error.message : 'Unreadable acknowledgement';
+          this.settleSubscription(
+            subscription,
+            { ok: false, channel, error: { code: 'MALFORMED_ACK', message } },
+            true
+          );
         }
-        this.settleSubscription(subscription, response, false);
       });
     });
     return subscription.pending;
