@@ -286,7 +286,7 @@ describe('Realtime', () => {
     await expect(subscription).resolves.toMatchObject({
       ok: false,
       channel: 'room',
-      error: { code: 'MALFORMED_ACK' },
+      error: { code: 'MALFORMED_ACK', message: 'Presence snapshot members is not an array' },
     });
     expect(realtime.getSubscribedChannels()).toEqual([]);
     expect(realtime.getPresenceState('room')).toEqual([]);
