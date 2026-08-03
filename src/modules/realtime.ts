@@ -308,19 +308,34 @@ export class Realtime {
         if (this.subscriptions.get(channel) !== subscription || subscription.epoch !== epoch) {
           return;
         }
-        if (response.ok) {
-          subscription.status = 'subscribed';
-          // Older self-hosted backends may omit the presence snapshot from the
-          // acknowledgement; normalize it so the returned promise always settles.
-          response.presence ??= { members: [] };
-          subscription.members = new Map(
-            response.presence.members.map((member) => [member.presenceId, member])
-          );
-        } else {
+        try {
+          if (response.ok) {
+            // Backends predating the presence snapshot ack with `{ ok: true, channel }`.
+            // Normalize so the resolved response always carries a snapshot.
+            response.presence = { members: response.presence?.members ?? [] };
+            subscription.members = new Map(
+              response.presence.members.map((member) => [member.presenceId, member])
+            );
+            // Set only after the snapshot is read, so an unreadable ack cannot leave
+            // the subscription reporting itself as subscribed.
+            subscription.status = 'subscribed';
+          } else {
+            subscription.status = 'rejected';
+            subscription.members.clear();
+          }
+          this.settleSubscription(subscription, response, false);
+        } catch (error) {
+          // An unreadable ack must still settle the caller's promise; otherwise it
+          // waits out SUBSCRIBE_TIMEOUT and reports a timeout that never happened.
           subscription.status = 'rejected';
           subscription.members.clear();
+          const message = error instanceof Error ? error.message : 'Unreadable acknowledgement';
+          this.settleSubscription(
+            subscription,
+            { ok: false, channel, error: { code: 'MALFORMED_ACK', message } },
+            true
+          );
         }
-        this.settleSubscription(subscription, response, false);
       });
     });
     return subscription.pending;

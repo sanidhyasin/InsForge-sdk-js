@@ -253,6 +253,45 @@ describe('Realtime', () => {
     expect(realtime.getPresenceState('room')).toEqual([]);
   });
 
+  it('resolves a subscription with empty presence when the snapshot omits its member list', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+    const subscription = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+
+    latestSubscribeAck()({ ok: true, channel: 'room', presence: {} } as SubscribeResponse);
+
+    await expect(subscription).resolves.toEqual({
+      ok: true,
+      channel: 'room',
+      presence: { members: [] },
+    });
+    expect(realtime.getSubscribedChannels()).toEqual(['room']);
+    expect(realtime.getPresenceState('room')).toEqual([]);
+  });
+
+  it('rejects an unreadable acknowledgement instead of waiting out the subscribe timeout', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+    const subscription = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+
+    // A shape no amount of field defaulting can rescue: the ack must still settle.
+    latestSubscribeAck()({
+      ok: true,
+      channel: 'room',
+      presence: { members: 'nope' },
+    } as unknown as SubscribeResponse);
+
+    await expect(subscription).resolves.toMatchObject({
+      ok: false,
+      channel: 'room',
+      error: { code: 'MALFORMED_ACK' },
+    });
+    expect(realtime.getSubscribedChannels()).toEqual([]);
+    expect(realtime.getPresenceState('room')).toEqual([]);
+  });
+
   it('pauses a server-rejected subscription until the caller explicitly retries it', async () => {
     const realtime = new Realtime('http://example.test', new TokenManager());
     await connect(realtime);
