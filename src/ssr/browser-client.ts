@@ -163,7 +163,14 @@ export function createBrowserClient(
       }
 
       accessToken = refreshBody.accessToken;
-      client?.setAccessToken(refreshBody.accessToken, AuthChangeEvent.TOKEN_REFRESHED);
+      // The route answers with the user as well as the token, and both are
+      // required above — so record a whole session. Storing only the token
+      // would leave `auth.getCurrentUser()` holding a token with no identity
+      // behind it, and it would go back to the network for one it already has.
+      client?.setSession(
+        { accessToken: refreshBody.accessToken, user: refreshBody.user },
+        AuthChangeEvent.TOKEN_REFRESHED
+      );
       return refreshBody as AuthRefreshResponse;
     })().finally(() => {
       sessionChecked = true;
@@ -232,11 +239,10 @@ export function createBrowserClient(
 
   // A missing or expiring access token on a cold load is the app route's
   // business: the base client would refresh against the InsForge origin, where
-  // the app-scoped httpOnly refresh cookie never arrives. Once the route hands
-  // back a token the base method takes over and caches the user it resolves,
-  // so every later read is served from memory. When the route reports no
-  // session, that answer is final — delegating then would only add a refresh
-  // request that is certain to 401.
+  // the app-scoped httpOnly refresh cookie never arrives. The route records a
+  // full session, so the base method below then answers from memory without a
+  // request of its own. When the route reports no session, that answer is
+  // final — delegating then would only add a refresh certain to 401.
   const getCurrentUser = client.auth.getCurrentUser.bind(client.auth);
   client.auth.getCurrentUser = async () => {
     if (!accessToken || isJwtExpiredOrExpiring(accessToken, options.refreshLeewaySeconds)) {

@@ -31,13 +31,13 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /**
- * Refresh calls aimed at the InsForge origin. The app's httpOnly refresh
- * cookie is scoped to the app's own domain, so these can only ever 401.
+ * Calls aimed at the InsForge origin rather than the app's own routes. A
+ * refresh sent there can only ever 401 — the app's httpOnly refresh cookie is
+ * scoped to the app's domain — and a user lookup sent there is a round trip
+ * for something the refresh route already returned.
  */
-function insForgeOriginRefreshCalls(fetch: { mock: { calls: unknown[][] } }) {
-  return fetch.mock.calls.filter(([url]) =>
-    /^https:\/\/api\.insforge\.test\S*refresh$/.test(String(url))
-  );
+function insForgeOriginCalls(fetch: { mock: { calls: unknown[][] } }) {
+  return fetch.mock.calls.filter(([url]) => String(url).startsWith('https://api.insforge.test'));
 }
 
 function cookieStore(initial: Record<string, string> = {}) {
@@ -271,14 +271,15 @@ describe('@insforge/sdk/ssr cookies', () => {
       fetch: fetch as any,
     });
     const { data, error } = await client.auth.getCurrentUser();
-    // The user the route resolved is cached, so a second read is free.
-    const callsAfterFirstRead = fetch.mock.calls.length;
     await client.auth.getCurrentUser();
 
     expect(error).toBeNull();
     expect(data.user).toMatchObject({ id: 'user-2' });
-    expect(fetch.mock.calls).toHaveLength(callsAfterFirstRead);
-    expect(insForgeOriginRefreshCalls(fetch)).toHaveLength(0);
+    // The app route is the only thing that can mint a token here, and the
+    // session it returns is recorded whole — so neither read needs a request
+    // to the InsForge origin, for the user or for a refresh.
+    expect(fetch).toHaveBeenCalledWith('/api/auth/refresh', expect.anything());
+    expect(insForgeOriginCalls(fetch)).toHaveLength(0);
   });
 
   it('resolves the current user through the app refresh route when the access-token cookie is expired', async () => {
@@ -311,7 +312,8 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     expect(error).toBeNull();
     expect(data.user).toMatchObject({ id: 'user-3' });
-    expect(insForgeOriginRefreshCalls(fetch)).toHaveLength(0);
+    expect(fetch).toHaveBeenCalledWith('/api/auth/refresh', expect.anything());
+    expect(insForgeOriginCalls(fetch)).toHaveLength(0);
   });
 
   it('stops at the app refresh route when it reports no session', async () => {
@@ -336,11 +338,7 @@ describe('@insforge/sdk/ssr cookies', () => {
     expect(data.user).toBeNull();
     // Falling through to the base client here would refresh against the
     // InsForge origin, which cannot see the app's httpOnly cookie.
-    expect(
-      fetch.mock.calls.filter(([url]: [string]) =>
-        String(url).startsWith('https://api.insforge.test')
-      )
-    ).toHaveLength(0);
+    expect(insForgeOriginCalls(fetch)).toHaveLength(0);
   });
 
   it('refreshes through the app route before a browser request when access token is missing', async () => {
