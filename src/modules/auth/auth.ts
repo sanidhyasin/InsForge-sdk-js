@@ -536,10 +536,18 @@ export class Auth {
     }
   }
 
-  /** Resolve the user an access token we already hold belongs to. */
+  /**
+   * Resolve the user an access token we already hold belongs to.
+   *
+   * `skipAuthRefresh` keeps a rejected token from tripping the HTTP client's
+   * own refresh: callers here decide what a 401 means, and in the browser that
+   * decision belongs to whoever owns the refresh cookie.
+   */
   private async fetchCurrentUser(accessToken: string): Promise<UserSchema | null> {
     this.http.setAuthToken(accessToken);
-    const response = await this.http.get<{ user: UserSchema }>('/api/auth/sessions/current');
+    const response = await this.http.get<{ user: UserSchema }>('/api/auth/sessions/current', {
+      skipAuthRefresh: true,
+    });
     return response.user ?? null;
   }
 

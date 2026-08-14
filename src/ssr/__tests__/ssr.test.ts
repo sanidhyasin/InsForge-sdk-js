@@ -267,6 +267,69 @@ describe('@insforge/sdk/ssr cookies', () => {
     ).toHaveLength(0);
   });
 
+  it('resolves the current user through the app refresh route when the access-token cookie is expired', async () => {
+    const expiredToken = jwtWithExp(Math.floor(Date.now() / 1000) - 60);
+    const freshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      cookie: `insforge_access_token=${encodeURIComponent(expiredToken)}`,
+    });
+    const fetch = vi.fn(async (url: string) => {
+      if (url === '/api/auth/refresh') {
+        return jsonResponse(200, { accessToken: freshToken, user: { id: 'user-3' } });
+      }
+      return jsonResponse(401, {
+        error: ERROR_CODES.AUTH_UNAUTHORIZED,
+        message: 'No refresh token provided',
+        statusCode: 401,
+      });
+    });
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const { data, error } = await client.auth.getCurrentUser();
+
+    expect(error).toBeNull();
+    expect(data.user).toMatchObject({ id: 'user-3' });
+    expect(
+      fetch.mock.calls.filter(([url]: [string]) =>
+        String(url).startsWith('https://api.insforge.test')
+      )
+    ).toHaveLength(0);
+  });
+
+  it('stops at the app refresh route when it reports no session', async () => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', { cookie: '' });
+    const fetch = vi.fn(async () =>
+      jsonResponse(401, {
+        error: ERROR_CODES.AUTH_UNAUTHORIZED,
+        message: 'No refresh token provided',
+        statusCode: 401,
+      })
+    );
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const { data, error } = await client.auth.getCurrentUser();
+
+    expect(error).toBeNull();
+    expect(data.user).toBeNull();
+    // Falling through to the base client here would refresh against the
+    // InsForge origin, which cannot see the app's httpOnly cookie.
+    expect(
+      fetch.mock.calls.filter(([url]: [string]) =>
+        String(url).startsWith('https://api.insforge.test')
+      )
+    ).toHaveLength(0);
+  });
+
   it('refreshes through the app route before a browser request when access token is missing', async () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
     vi.stubGlobal('document', { cookie: '' });
