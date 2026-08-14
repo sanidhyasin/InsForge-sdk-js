@@ -183,6 +183,90 @@ describe('@insforge/sdk/ssr cookies', () => {
     expect(client.getHttpClient().getHeaders().Authorization).toBe(`Bearer ${token}`);
   });
 
+  it('resolves the current user from the access-token cookie on a cold load', async () => {
+    const token = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      cookie: `insforge_access_token=${encodeURIComponent(token)}`,
+    });
+    const fetch = vi.fn(async (url: string) => {
+      if (url === 'https://api.insforge.test/api/auth/sessions/current') {
+        return jsonResponse(200, { user: { id: 'user-1' } });
+      }
+      return jsonResponse(401, {
+        error: ERROR_CODES.AUTH_UNAUTHORIZED,
+        message: 'No refresh token provided',
+        statusCode: 401,
+      });
+    });
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const { data, error } = await client.auth.getCurrentUser();
+
+    expect(error).toBeNull();
+    expect(data.user).toMatchObject({ id: 'user-1' });
+    // The InsForge-origin refresh endpoint cannot see the app's httpOnly
+    // refresh cookie, so reaching for it here would always 401.
+    expect(fetch).not.toHaveBeenCalledWith(
+      'https://api.insforge.test/api/auth/refresh',
+      expect.anything()
+    );
+  });
+
+  it('serves a second current-user read from memory', async () => {
+    const token = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      cookie: `insforge_access_token=${encodeURIComponent(token)}`,
+    });
+    const fetch = vi.fn(async () => jsonResponse(200, { user: { id: 'user-1' } }));
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    await client.auth.getCurrentUser();
+    const { data } = await client.auth.getCurrentUser();
+
+    expect(data.user).toMatchObject({ id: 'user-1' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves the current user through the app refresh route when the access-token cookie is gone', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    vi.stubGlobal('document', { cookie: '' });
+    const fetch = vi.fn(async (url: string) => {
+      if (url === '/api/auth/refresh') {
+        return jsonResponse(200, { accessToken, user: { id: 'user-2' } });
+      }
+      return jsonResponse(401, {
+        error: ERROR_CODES.AUTH_UNAUTHORIZED,
+        message: 'No refresh token provided',
+        statusCode: 401,
+      });
+    });
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const { data, error } = await client.auth.getCurrentUser();
+
+    expect(error).toBeNull();
+    expect(data.user).toMatchObject({ id: 'user-2' });
+    expect(
+      fetch.mock.calls.filter(([url]: [string]) =>
+        String(url).startsWith('https://api.insforge.test')
+      )
+    ).toHaveLength(0);
+  });
+
   it('refreshes through the app route before a browser request when access token is missing', async () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
     vi.stubGlobal('document', { cookie: '' });

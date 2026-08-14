@@ -230,6 +230,22 @@ export function createBrowserClient(
     setAccessToken(token, event);
   };
 
+  // On a cold load the access token cookie may be absent or expired, and the
+  // base client's own refresh posts to the InsForge origin, which the app's
+  // httpOnly refresh cookie never reaches. Go through the app's refresh route
+  // first — it answers with the user, so a hydrating caller needs no second
+  // request.
+  const getCurrentUser = client.auth.getCurrentUser.bind(client.auth);
+  client.auth.getCurrentUser = async () => {
+    if (!accessToken) {
+      const refreshed = await refreshFromRoute().catch(() => null);
+      if (refreshed?.user) {
+        return { data: { user: refreshed.user }, error: null };
+      }
+    }
+    return getCurrentUser();
+  };
+
   if (accessToken) {
     client.setAccessToken(accessToken);
   }
