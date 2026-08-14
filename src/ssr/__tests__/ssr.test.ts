@@ -30,6 +30,16 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+/**
+ * Refresh calls aimed at the InsForge origin. The app's httpOnly refresh
+ * cookie is scoped to the app's own domain, so these can only ever 401.
+ */
+function insForgeOriginRefreshCalls(fetch: { mock: { calls: unknown[][] } }) {
+  return fetch.mock.calls.filter(([url]) =>
+    /^https:\/\/api\.insforge\.test\S*refresh$/.test(String(url))
+  );
+}
+
 function cookieStore(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
   const options = new Map<string, CookieOptions>();
@@ -239,10 +249,14 @@ describe('@insforge/sdk/ssr cookies', () => {
 
   it('resolves the current user through the app refresh route when the access-token cookie is gone', async () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    vi.stubGlobal('window', {});
     vi.stubGlobal('document', { cookie: '' });
     const fetch = vi.fn(async (url: string) => {
       if (url === '/api/auth/refresh') {
         return jsonResponse(200, { accessToken, user: { id: 'user-2' } });
+      }
+      if (url === 'https://api.insforge.test/api/auth/sessions/current') {
+        return jsonResponse(200, { user: { id: 'user-2' } });
       }
       return jsonResponse(401, {
         error: ERROR_CODES.AUTH_UNAUTHORIZED,
@@ -257,14 +271,14 @@ describe('@insforge/sdk/ssr cookies', () => {
       fetch: fetch as any,
     });
     const { data, error } = await client.auth.getCurrentUser();
+    // The user the route resolved is cached, so a second read is free.
+    const callsAfterFirstRead = fetch.mock.calls.length;
+    await client.auth.getCurrentUser();
 
     expect(error).toBeNull();
     expect(data.user).toMatchObject({ id: 'user-2' });
-    expect(
-      fetch.mock.calls.filter(([url]: [string]) =>
-        String(url).startsWith('https://api.insforge.test')
-      )
-    ).toHaveLength(0);
+    expect(fetch.mock.calls).toHaveLength(callsAfterFirstRead);
+    expect(insForgeOriginRefreshCalls(fetch)).toHaveLength(0);
   });
 
   it('resolves the current user through the app refresh route when the access-token cookie is expired', async () => {
@@ -277,6 +291,9 @@ describe('@insforge/sdk/ssr cookies', () => {
     const fetch = vi.fn(async (url: string) => {
       if (url === '/api/auth/refresh') {
         return jsonResponse(200, { accessToken: freshToken, user: { id: 'user-3' } });
+      }
+      if (url === 'https://api.insforge.test/api/auth/sessions/current') {
+        return jsonResponse(200, { user: { id: 'user-3' } });
       }
       return jsonResponse(401, {
         error: ERROR_CODES.AUTH_UNAUTHORIZED,
@@ -294,11 +311,7 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     expect(error).toBeNull();
     expect(data.user).toMatchObject({ id: 'user-3' });
-    expect(
-      fetch.mock.calls.filter(([url]: [string]) =>
-        String(url).startsWith('https://api.insforge.test')
-      )
-    ).toHaveLength(0);
+    expect(insForgeOriginRefreshCalls(fetch)).toHaveLength(0);
   });
 
   it('stops at the app refresh route when it reports no session', async () => {
