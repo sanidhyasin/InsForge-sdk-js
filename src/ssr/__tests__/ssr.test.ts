@@ -271,6 +271,7 @@ describe('@insforge/sdk/ssr cookies', () => {
       fetch: fetch as any,
     });
     const { data, error } = await client.auth.getCurrentUser();
+    const callsAfterFirstRead = fetch.mock.calls.length;
     await client.auth.getCurrentUser();
 
     expect(error).toBeNull();
@@ -280,6 +281,36 @@ describe('@insforge/sdk/ssr cookies', () => {
     // to the InsForge origin, for the user or for a refresh.
     expect(fetch).toHaveBeenCalledWith('/api/auth/refresh', expect.anything());
     expect(insForgeOriginCalls(fetch)).toHaveLength(0);
+    // Not even a second trip to the app route: the first read cached the user.
+    expect(fetch.mock.calls).toHaveLength(callsAfterFirstRead);
+  });
+
+  it('uses a session handed in through setSession without refreshing', async () => {
+    const token = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', { cookie: '' });
+    const fetch = vi.fn(async () =>
+      jsonResponse(401, {
+        error: ERROR_CODES.AUTH_UNAUTHORIZED,
+        message: 'No refresh token provided',
+        statusCode: 401,
+      })
+    );
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    client.setSession({ accessToken: token, user: { id: 'user-4' } as any });
+    const { data, error } = await client.auth.getCurrentUser();
+
+    expect(error).toBeNull();
+    expect(data.user).toMatchObject({ id: 'user-4' });
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(`Bearer ${token}`);
+    // The cold-load refresh fired before the session was handed in; the read
+    // itself must not reach for the network again.
+    expect(fetch.mock.calls.filter(([url]) => String(url) !== '/api/auth/refresh')).toHaveLength(0);
   });
 
   it('resolves the current user through the app refresh route when the access-token cookie is expired', async () => {

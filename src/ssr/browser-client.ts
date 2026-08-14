@@ -162,6 +162,9 @@ export function createBrowserClient(
         return null;
       }
 
+      // Assigned here as well as by the wrapped setter below, because a
+      // refresh can run while the client is still being constructed — hence
+      // the optional call — and the captured token has to be right either way.
       accessToken = refreshBody.accessToken;
       // The route answers with the user as well as the token, and both are
       // required above — so record a whole session. Storing only the token
@@ -235,6 +238,16 @@ export function createBrowserClient(
   client.setAccessToken = (token: string | null, event) => {
     accessToken = token;
     setAccessToken(token, event);
+  };
+
+  // Both token entry points have to feed the captured token, not just one. A
+  // session handed in from outside is as current as one this client refreshed;
+  // if it did not land here, the read below would treat the token as missing
+  // and refresh over a session it had just been given.
+  const setSession = client.setSession.bind(client);
+  client.setSession = (session, event) => {
+    accessToken = session.accessToken;
+    setSession(session, event);
   };
 
   // A missing or expiring access token on a cold load is the app route's
